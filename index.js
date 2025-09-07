@@ -20,23 +20,26 @@ app.post('/extract-text', async (req, res) => {
     // 🖼️ احفظ الصورة
     fs.writeFileSync(tempImage, Buffer.from(image_base64, 'base64'));
 
-    // 🔎 OCR عربي + إنجليزي
-    const { data: { text } } = await Tesseract.recognize(tempImage, 'ara+eng');
+    // 🔎 OCR عربي فقط مع تحسينات
+    const { data: { text } } = await Tesseract.recognize(tempImage, 'ara', {
+      tessedit_char_whitelist: "ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأإؤئ", // فقط الحروف العربية
+      tessedit_pageseg_mode: 3 // صفحة واحدة نص كامل
+    });
 
     res.json({
       success: true,
-      text: text.trim() || 'OCR could not extract text'
+      text: text.trim() || 'OCR لم يستطع استخراج نص'
     });
 
   } catch (err) {
     console.error('OCR Error:', err.toString());
-    res.status(500).json({ error: 'Failed to process image', details: err.toString() });
+    res.status(500).json({ error: 'فشل في معالجة الصورة', details: err.toString() });
 
   } finally {
     // 🧹 امسح الصورة المؤقتة
     try {
       exec(`rm -f "${tempImage}"`, (err) => {
-        if (err) console.error('Failed to clean temp image:', err);
+        if (err) console.error('فشل في تنظيف الصورة المؤقتة:', err);
       });
     } catch (cleanupErr) {
       console.error('Cleanup error:', cleanupErr.toString());
@@ -45,4 +48,4 @@ app.post('/extract-text', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 6000;
-app.listen(PORT, () => console.log(`Image OCR API running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Image OCR API تعمل على المنفذ ${PORT}`));
