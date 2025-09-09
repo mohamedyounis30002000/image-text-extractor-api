@@ -7,28 +7,27 @@ const { exec } = require('child_process');
 const app = express();
 app.use(express.json({ limit: '100mb' })); // استقبل Base64 كبير
 
-// API لمعالجة صورة واحدة Base64
+// API لمعالجة صورة Base64
 app.post('/extract-text', async (req, res) => {
-  const { image_base64 } = req.body;
-
-  if (!image_base64) {
+  if (!req.body.image_base64) {
     return res.status(400).json({ error: 'Missing image_base64 field' });
   }
 
-  const tempImage = path.join('/tmp', `upload_${Date.now()}.png`);
-  try {
-    // 🖼️ احفظ الصورة
-    fs.writeFileSync(tempImage, Buffer.from(image_base64, 'base64'));
+  const tempImage = path.join('/tmp', `image_${Date.now()}.png`);
 
-    // 🔎 OCR عربي + أرقام
+  try {
+    // 🖼️ احفظ الصورة مؤقتًا
+    fs.writeFileSync(tempImage, Buffer.from(req.body.image_base64, 'base64'));
+
+    // 🔎 OCR بالعربي + الأرقام
     const { data: { text } } = await Tesseract.recognize(tempImage, 'ara', {
-      tessedit_pageseg_mode: 6, // نصوص متعددة الأسطر
+      tessedit_pageseg_mode: 6, // مناسب لبلوكات نص
       tessedit_char_whitelist: "ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأإؤئ0123456789٠١٢٣٤٥٦٧٨٩"
     });
 
-    // 🧹 تنظيف النص المستخرج
+    // 🧹 تنظيف النص
     const cleanedText = text
-      .replace(/[^\u0600-\u06FF0-9٠-٩\s]/g, '') // فقط عربي + أرقام
+      .replace(/[^\u0600-\u06FF0-9٠-٩\s]/g, '') // فقط الحروف والأرقام
       .replace(/\s+/g, ' ') // دمج المسافات
       .trim();
 
@@ -42,7 +41,7 @@ app.post('/extract-text', async (req, res) => {
     res.status(500).json({ error: 'فشل في معالجة الصورة', details: err.toString() });
 
   } finally {
-    // 🧹 امسح الصورة المؤقتة
+    // 🧹 تنظيف الملفات المؤقتة
     try {
       exec(`rm -f "${tempImage}"`, (err) => {
         if (err) console.error('فشل في تنظيف الصورة المؤقتة:', err);
@@ -53,5 +52,5 @@ app.post('/extract-text', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 6000;
-app.listen(PORT, () => console.log(`Image OCR API تعمل على المنفذ ${PORT}`));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Image OCR Extractor running on port ${PORT}`));
