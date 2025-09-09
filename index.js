@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const Tesseract = require('tesseract.js');
+const sharp = require('sharp');   // 👈 تحسين الصور
 const { exec } = require('child_process');
 
 const app = express();
@@ -13,13 +14,21 @@ app.post('/extract-text', async (req, res) => {
   }
 
   const tempImage = path.join('/tmp', `image_${Date.now()}.png`);
+  const cleanedImage = tempImage.replace('.png', '_clean.png');
 
   try {
     // 🖼️ احفظ الصورة مؤقتًا
     fs.writeFileSync(tempImage, Buffer.from(req.body.image_base64, 'base64'));
 
+    // ✨ تحسين الصورة (تكبير + أبيض وأسود + Normalize)
+    await sharp(tempImage)
+      .resize({ width: 1200 })  // تكبير العرض لزيادة الدقة
+      .grayscale()              // حولها لأبيض وأسود
+      .normalize()              // زوّد التباين
+      .toFile(cleanedImage);
+
     // 🔎 OCR بالعربي + الأرقام
-    const { data: { text } } = await Tesseract.recognize(tempImage, 'ara', {
+    const { data: { text } } = await Tesseract.recognize(cleanedImage, 'ara', {
       tessedit_pageseg_mode: 6,
       tessedit_char_whitelist: "ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأإؤئ0123456789٠١٢٣٤٥٦٧٨٩"
     });
@@ -40,13 +49,13 @@ app.post('/extract-text', async (req, res) => {
     res.status(500).json({ error: 'فشل في معالجة الصورة', details: err.toString() });
 
   } finally {
-    // 🧹 تنظيف الصورة المؤقتة
+    // 🧹 تنظيف الملفات المؤقتة
     try {
-      exec(`rm -f "${tempImage}"`, (err) => {
-        if (err) console.error('فشل في تنظيف الصورة المؤقتة:', err);
+      exec(`rm -f "${tempImage}" "${cleanedImage}"`, (err) => {
+        if (err) console.error('فشل في تنظيف الملفات المؤقتة:', err);
       });
     } catch (cleanupErr) {
-      console.error('Error cleaning temp image:', cleanupErr.toString());
+      console.error('Error cleaning temp files:', cleanupErr.toString());
     }
   }
 });
