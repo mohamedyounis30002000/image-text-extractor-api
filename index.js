@@ -12,7 +12,7 @@ app.post('/extract-text', async (req, res) => {
     return res.status(400).json({ error: 'Missing image_base64 field' });
   }
 
-  const tempimage = path.join('/tmp', 'file.image');
+  const tempimage = path.join('/tmp', 'file.png');
   let files = [];
 
   try {
