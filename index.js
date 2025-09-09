@@ -5,52 +5,57 @@ const Tesseract = require('tesseract.js');
 const { exec } = require('child_process');
 
 const app = express();
-app.use(express.json({ limit: '100mb' })); // استقبل Base64 كبير
+app.use(express.json({ limit: '100mb' }));
 
-// API لمعالجة صورة Base64
 app.post('/extract-text', async (req, res) => {
   if (!req.body.image_base64) {
     return res.status(400).json({ error: 'Missing image_base64 field' });
   }
 
-  const tempImage = path.join('/tmp', `image_${Date.now()}.png`);
+  const tempimage = path.join('/tmp', 'file.image');
+  let files = [];
 
   try {
-    // 🖼️ احفظ الصورة مؤقتًا
-    fs.writeFileSync(tempImage, Buffer.from(req.body.image_base64, 'base64'));
+    // احفظ الـ image مؤقتًا
+    fs.writeFileSync(tempimage, Buffer.from(req.body.image_base64, 'base64'));
 
-    // 🔎 OCR بالعربي + الأرقام
-    const { data: { text } } = await Tesseract.recognize(tempImage, 'ara', {
-      tessedit_pageseg_mode: 6, // مناسب لبلوكات نص
-      tessedit_char_whitelist: "ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأإؤئ0123456789٠١٢٣٤٥٦٧٨٩"
+    // حول كل الصفحات لصور
+    await new Promise((resolve, reject) => {
+      exec(`imagetoppm "${tempimage}" "/tmp/page" -png`, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
     });
 
-    // 🧹 تنظيف النص
-    const cleanedText = text
-      .replace(/[^\u0600-\u06FF0-9٠-٩\s]/g, '') // فقط الحروف والأرقام
-      .replace(/\s+/g, ' ') // دمج المسافات
-      .trim();
+    // اقرأ الصور الناتجة
+    files = fs.readdirSync('/tmp').filter(file => file.startsWith('page') && file.endsWith('.png'));
+    files.sort(); // تأكد إن الصور بترتيب الصفحات
 
-    res.json({
-      success: true,
-      text: cleanedText || 'OCR لم يستطع استخراج نص'
-    });
+    // OCR لكل صورة
+    let fullText = '';
+    for (const file of files) {
+      const imagePath = path.join('/tmp', file);
+      const { data: { text } } = await Tesseract.recognize(imagePath, 'eng');
+      fullText += `\n\n--- Page ${file} ---\n\n` + text;
+    }
+
+    res.json({ text: fullText.trim() || 'OCR could not extract text' });
 
   } catch (err) {
-    console.error('OCR Error:', err.toString());
-    res.status(500).json({ error: 'فشل في معالجة الصورة', details: err.toString() });
+    console.error('Error:', err.toString());
+    res.status(500).json({ error: 'Failed to process image', details: err.toString() });
 
   } finally {
-    // 🧹 تنظيف الملفات المؤقتة
+    // تنظيف الملفات المؤقتة
     try {
-      exec(`rm -f "${tempImage}"`, (err) => {
-        if (err) console.error('فشل في تنظيف الصورة المؤقتة:', err);
-      });
-    } catch (cleanupErr) {
-      console.error('Cleanup error:', cleanupErr.toString());
-    }
+    exec('rm -rf /tmp/*', (err) => {
+      if (err) console.error('Failed to clean /tmp:', err);
+    });
+  } catch (cleanupErr) {
+    console.error('Error cleaning /tmp:', cleanupErr.toString());
+  }
   }
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Image OCR Extractor running on port ${PORT}`));
+app.listen(PORT, () => console.log(`image OCR Extractor running on port ${PORT}`));
